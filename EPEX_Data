@@ -1,0 +1,117 @@
+import pandas as pd
+import numpy as np
+from pyxos.database import SqlLibrary
+from pyxos.qtz import Catalog
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import figure
+import seaborn as sns
+from datetime import date, datetime
+import warnings
+warnings.filterwarnings('ignore')
+
+
+lib = SqlLibrary()
+cat = Catalog()
+
+# time period 4 full years back
+
+begin = pd.Timestamp("2016-01-01", tz="Europe/Berlin")
+end   = pd.Timestamp("2020-12-31", tz="Europe/Berlin")
+
+# statkrafts epex API
+epex = lib.generic.prices_epoxy(begin, end, keyword="DayAhead")
+# exaa = cat.read('/ex_exaa/price/power/exaa/hour', begin, end)
+
+# exaa.to_csv('Vincent_Uhlke/epex_prices_csv')
+
+# exaa = pd.read_csv('Vincent_Uhlke/epex_prices_csv', delimiter = ',')
+# print(exaa.head())
+def build_timeseries_dataframe(rawEpex):
+    
+    epex = rawEpex.reset_index()
+    epex = epex.rename(columns = {'index': 'date_time'})
+    def _day_handler(df):
+        weekdays = np.arange(0,8)
+        weekend,date,hour, numericHour,weekdayName, weekdayNum = [],[],[],[],[],[]
+        for row in range(df.shape[0]):
+            date.append(str(df.loc[row, 'date_time']).split(' ')[0])
+            hour.append(str(df.loc[row, 'date_time']).split(' ')[1].split(':')[0])
+            numericHour.append(int(str(df.loc[row, 'date_time']).split(' ')[1].split(':')[0]))
+            weekdayN = df.loc[row, 'date_time'].isoweekday()
+            weekdayName.append(df.loc[row, 'date_time'].strftime("%A"))
+            weekdayNum.append(weekdayN)
+            # if the date is a weekend day like saturday or sunday then give it a one else a 0
+            if weekdayN == 7 or weekdayN == 6:
+                weekend.append(1)
+            else:
+                weekend.append(0)
+        df['isWeekend'],df['date'], df['hour'], df['hourNumeric'],df['WeekdayName'],df['weekdayNumber'] = weekend, date, hour, numericHour,weekdayName,weekdayNum
+
+        return df
+
+    def _get_seasons(df):
+        yearStationsNames, yearStationsId = [], []
+        dates = df.date.tolist()
+        counter = 0
+        for d in dates:
+            year = d.split('-')[0]
+            seasons = [('Winter', ((year + '-01-01'),  (year +  '-03-20'))),
+                       ('Spring', ((year + '-03-21'),  (year + '-06-20'))),
+                       ('Summer', ((year + '-06-21'),  (year + '-09-22'))),
+                       ('Autumn', ((year + '-09-23'),  (year + '-12-20'))),
+                       ('Winter', ((year +'-12-21'),  (year + '-12-31')))]
+            for season, (start, end) in seasons:
+                if str(start) <= d <= str(end):
+                    yearStationsNames.append(season)
+                    counter += 1
+            if season == 'Winter':
+                yearStationsId.append(1)
+            elif season == 'Spring':
+                yearStationsId.append(2)
+            elif season == 'Summer':
+                yearStationsId.append(3)
+            elif season == 'Autumn':
+                    yearStationsId.append(4)
+        df['StationOfTheYear'] = yearStationsNames
+        df['StationOfTheId'] = yearStationsId
+
+        return df
+        
+    def _neg_prices_counter(df):
+        neg_price_list = []
+        for row in range(df.shape[0]):
+            if df.loc[row, 'price'] < 0:
+                neg_price_list.append(1)
+            else:
+                neg_price_list.append(0)
+        df['IsNegPrice'] = neg_price_list
+        return df
+    def _adding_months_numbers(df):
+        monthIds = []
+        for row in range(df.shape[0]):
+            monthIds.append(int(df.loc[row, 'date'].split('-')[1]))
+        df['month_number'] = monthIds
+        return df
+    def _demand_hours_classification(df):
+        peak = []
+        for row in range(df.shape[0]):
+            if (df.loc[row, 'hourNumeric'] >= 8 and df.loc[row, 'hourNumeric'] <= 10) or (df.loc[row, 'hourNumeric'] >= 18 and df.loc[row, 'hourNumeric'] <= 21):
+                peak.append(1)
+            else:
+                peak.append(0)
+        df['morning_afternon_peaks'] = peak
+        return df
+        
+    epex = _day_handler(epex)
+    epex = _get_seasons(epex)
+    epex = _neg_prices_counter(epex)
+    epex = _adding_months_numbers(epex)
+    epex['price_chg'] = epex.price.pct_change().tolist()
+    epex = _demand_hours_classification(epex)
+    
+    return epex
+
+epex = build_timeseries_dataframe(epex)
+
+
+epex.to_csv('##')
