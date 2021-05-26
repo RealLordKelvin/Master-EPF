@@ -1,0 +1,118 @@
+figure(num=None, figsize=(10, 4), dpi=80, facecolor='w', edgecolor='k')
+ax = sns.lineplot('index', 'price', data = epex.reset_index(), color = 'midnightblue')
+ax.axes.set_title("EPEX Spot Prices From 2016-2020",fontsize=10)
+ax.set_xlabel("Hours",fontsize=10)
+ax.set_ylabel("Epex Spot Price",fontsize=10)
+ax.tick_params(labelsize=10)
+plt.show()
+fig = ax.get_figure()
+fig.savefig(r'Vincent_Uhlke\master\Epex_Spot_2016_2020.png') 
+
+# OIL price APRIL Path
+# epex -> dataframe of prices
+
+large_neg_days = list(set(epex[epex.price < -50].date.tolist()))
+large_neg_days
+print(large_neg_days)
+oil_synthetic = [14.4, 11.50, 10.20, 10.7, 10.8, 10.5, 10.4,10.15, 4.3,0.4, -30, -37, -10, -8.40, -2.50, 0.1, 0.3, 1, -2, 0.2, -9.5, -2.2, 0.8, 1.2]
+len(oil_synthetic)
+plot(oil_synthetic)
+hours = [i for i in range(0,24)]
+df_oil_synthetic = pd.DataFrame()
+df_oil_synthetic['hours'] = hours
+df_oil_synthetic['price'] = oil_synthetic
+
+
+# Visual Oil and Electricity
+
+colors = ['DarkBlue', 'Purple', 'lavender', 'Grey', 'lightpink', 'thistle', 'slateblue', 'red']
+dates = ['2020-09-13', '2017-05-01', '2020-04-21', '2016-12-26','2019-12-08', '2017-12-26', '2020-04-05', '2020-04-20']
+figure(num=None, figsize=(10, 4), dpi=80, facecolor='w', edgecolor='k') 
+for d in range(len(dates)):
+    if d != 7:
+        fig = sns.lineplot('hour', 'price', data = epex[epex.date == dates[d]].reset_index(), color = colors[d], label = dates[d])
+    else:
+        fig = sns.lineplot('hours', 'price', data = df_oil_synthetic, color = colors[d], label = dates[d])
+        
+fig.set_xlabel("Hours",fontsize=10)
+fig.set_ylabel("Eur/MWh and USD/Barrel",fontsize=10)
+fig.tick_params(labelsize=10)
+fig.axes.set_title("Comparison of large negative epex prices with crude oil first negative price day in history",fontsize=10)
+legend(title="Dates", loc="lower left")
+fig = fig.get_figure()
+fig.savefig(r'Vincent_Uhlke\master\ElectricityVSCRUDEOILE.png') 
+plt.show()
+
+
+
+def stations_statistics_calc(df, stat, what2Count = None, hasHour = False):
+    stationsNames = ['Winter', 'Spring', 'Summer', 'Autumn']
+    yearsToInspect = ['2016','2017', '2018', '2019', '2020']
+        
+    statisticOfStation = []
+    stationsOfTheYear = []
+    yearOfCalculation = []
+    hour = []
+    station = []
+    for year in yearsToInspect:
+        for stations in stationsNames:
+            if stat == 'mean':
+                statisticOfStation.append(df[(df.date > year) & (df.date < str((int(year) + 1)))][df.StationOfTheYear == stations].mean()[0])
+            elif stat == 'var':
+                statisticOfStation.append(df[(df.date > year) & (df.date < str((int(year) + 1)))][df.StationOfTheYear == stations].var()[0])
+            elif stat == 'median':
+                statisticOfStation.append(df[(df.date > year) & (df.date < str((int(year) + 1)))][df.StationOfTheYear == stations].median()[0])
+            elif stat == 'count' and what2Count == 'IsNegPrice':
+                try:
+                    statisticOfStation.append(df[(df.date > year) & (df.date < str((int(year) + 1)))][df.StationOfTheYear == stations][what2Count].value_counts()[1])
+                except:
+                    statisticOfStation.append(0)
+            else:
+                raise valueError('Not recognized statistic')
+                
+            yearOfCalculation.append(year)
+            stationsOfTheYear.append(stations)
+            if hasHour:
+                hour.append(df.hourNumeric.tolist()[0])
+    
+    output = pd.DataFrame()
+    output['year'] = yearOfCalculation
+    output['stationOfTheYear'] = stationsOfTheYear
+    output[stat] = statisticOfStation
+    if hasHour:
+        output['hourNum'] = hour
+
+    return output
+
+
+# mean path over the time
+
+# print(epex[epex.date < '2017'].tail())
+meanStations = stations_statistics_calc(epex, 'mean')
+figure(num=None, figsize=(14, 6), dpi=80, facecolor='w', edgecolor='k')
+sns.lineplot('year', 'mean', data = meanStations, hue = 'stationOfTheYear').set_title("Power Price Mean Changes")
+plt.show()
+
+medianStations = stations_statistics_calc(epex, 'median')
+figure(num=None, figsize=(14, 6), dpi=80, facecolor='w', edgecolor='k')
+sns.lineplot('year', 'median', data = medianStations, hue = 'stationOfTheYear').set_title("Power Price Median Changes")
+plt.show()
+
+varianceStations = stations_statistics_calc(epex, 'var')
+figure(num=None, figsize=(14, 6), dpi=80, facecolor='w', edgecolor='k')
+sns.lineplot('year', 'var', data = varianceStations, hue = 'stationOfTheYear').set_title("Power Price Variance Changes")
+plt.show()
+
+# Negative hours count visualization
+
+negativeStations = stations_statistics_calc(epex, 'count', what2Count = 'IsNegPrice')
+print(negativeStations)
+figure(num=None, figsize=(10, 4), dpi=80, facecolor='w', edgecolor='k')
+ax = sns.barplot('year', 'count', data = negativeStations, hue = 'stationOfTheYear',palette = 'BuPu_r').set_title("Number of Negative Prices")
+ax.axes.set_title("Count of Negative Price Hours From 2016-2020",fontsize=10)
+ax.axes.set_xlabel("Year",fontsize=10)
+ax.axes.set_ylabel("Count of Negative Price Hours",fontsize=10)
+ax.axes.tick_params(labelsize=10)
+plt.show()
+fig = ax.get_figure()
+fig.savefig(r'Vincent_Uhlke\master\Neg_Hours_Epex_Spot_2016_2020.png') 
