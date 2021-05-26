@@ -1,0 +1,28 @@
+import numpy as np
+import pandas as pd
+from scipy import stats
+from sklearn.metrics import mean_squared_error
+import matplotlib.pyplot as plt
+import seaborn as sns
+from typing import List
+from datetime import datetime
+
+def _area_hyperbolic_sine(x, inverting = False):
+    if not inverting:
+        vst = np.log(x + np.sqrt(np.square(x) + 1))
+    else:
+        vst = np.sinh(x)
+    return np.array(vst)
+    
+    
+    normal = [-5,-4,-3,-2,-1,0,1,2,3,4,5]
+
+asinh = _area_hyperbolic_sine(normal)
+
+figure(num=None, figsize=(8, 4), dpi=80, facecolor='w', edgecolor='k')
+ax = sns.lineplot(data = np.array(asinh), color = 'midnightblue')
+ax = sns.lineplot(data = np.array(normal), color = 'pink')
+plt.show()
+fig = ax.get_figure()
+fig.savefig(r'Vincent_Uhlke\master\ASINH_EFFECT_VST.png') 
+asinh
