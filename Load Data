@@ -1,0 +1,28 @@
+from datetime import datetime
+
+load_data = pd.read_excel('Vincent_Uhlke/load_data_germany.xlsx').rename(columns = {'utc_timestamp': 'date_','cet_cest_timestamp': 'hour' })
+
+date = load_data.hour.iloc[0].split('T')[0]
+date
+int(load_data.hour.iloc[0].split('T')[1].split(':')[0])
+
+date_load, time_load = [], []
+for row in range(load_data.shape[0]):
+    date_load.append(load_data.hour.iloc[row].split('T')[0])
+    time_load.append(int(load_data.hour.iloc[row].split('T')[1].split(':')[0]))
+
+load_data['date_'] = date_load
+load_data['hour'] = time_load
+load_data.head()
+
+
+load_data_2016_2020_10 = load_data[load_data.date_ >='2016-01-01'].reset_index().drop(columns=['index'])
+epex_2016_2020_10 = epex[epex.date <= '2020-10-01']
+
+epex_2016_2020_10 = epex_2016_2020_10.iloc[:len(load_data_2016_2020_10.date_.tolist())]
+
+_dframe = pd.concat([load_data_2016_2020_10, epex_2016_2020_10], axis = 1)
+
+_dframe = _dframe[['date','hourNumeric', 'price', 'isWeekend', 'StationOfTheYear', 'StationOfTheId', 'IsNegPrice','DE_load_forecast_entsoe_transparency', 'DE_load_actual_entsoe_transparency', 'DE_wind_profile', 'DE_solar_profile']]
+
+_dframe.to_excel('Vincent_Uhlke/master/complete_data.xlsx')
