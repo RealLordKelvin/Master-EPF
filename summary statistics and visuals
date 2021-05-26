@@ -1,0 +1,135 @@
+hours_of_day = range(0, 24)
+print(hours_of_day)
+hoursAnalysis = pd.DataFrame()
+for hour in hours_of_day:
+    hoursAnalysis = pd.concat([_dframe[['price']][_dframe.hourNumeric == hour].describe().iloc[1:,:], hoursAnalysis], axis = 1)
+    hoursAnalysis = hoursAnalysis.rename(columns = {'price': int(str(hour + 1))})
+hoursAnalysis = hoursAnalysis.iloc[:,::-1].T.reset_index().rename(columns = {'index': 'price_of_hour'})
+
+
+import seaborn as sns, pandas as pd, matplotlib.pyplot as plt 
+
+Myyears = ['2016', '2017', '2018', '2019', '2020']
+yearColumn = []
+hoursAnalysisDfs = []
+for y in Myyears:
+    my_df_year = epex[(epex.date > y) & (epex.date < str((int(y) + 1)))]
+    hours_of_day = range(0, 24)
+    hoursAnalysis = pd.DataFrame()
+    for hour in hours_of_day:
+        hoursAnalysis = pd.concat([my_df_year[['price']][my_df_year.hourNumeric == hour].describe().iloc[1:,:], hoursAnalysis], axis = 1)
+        hoursAnalysis = hoursAnalysis.rename(columns = {'price': int(str(hour + 1))})
+    hoursAnalysis = hoursAnalysis.iloc[:,::-1].T.reset_index().rename(columns = {'index': 'price_of_hour'})
+    hoursAnalysis['Year'] = y
+    hoursAnalysisDfs.append(hoursAnalysis)
+
+merged_hoursAnalysisDfs = pd.concat(hoursAnalysisDfs).reset_index().drop(columns = ['index'])
+counter = 0
+for col in merged_hoursAnalysisDfs.columns.tolist():
+    if col != 'price_of_hour' and col != 'Year':
+        if counter == 1:
+            break
+        else:
+            print('hier')
+            figure(num=None, figsize=(10, 4), dpi=90, facecolor='w', edgecolor='k')
+            ax = sns.lineplot('price_of_hour', col, hue = 'Year', data = merged_hoursAnalysisDfs)
+            labels=Myyears
+            legend(labels,title="Years", loc="upper right") 
+            ax.axes.set_title("Average Hourly EPEX Spot Prices From 2016-2020",fontsize=10)
+            ax.set_xlabel("Hour of the day",fontsize=10)
+            ax.set_ylabel("Avg. Epex Spot Price",fontsize=10)
+            ax.tick_params(labelsize=10)
+            ax.set_xticks(range(1,25))
+            plt.show()
+            fig = ax.get_figure()
+            fig.savefig(r'Vincent_Uhlke\master\AVG_Epex_Spot_2016_2020.png') 
+            counter += 1
+            
+ 
+ 
+
+Myyears = ['2016', '2017', '2018', '2019', '2020']
+yearColumn = []
+monthsAnalysisDfs = []
+for y in Myyears:
+    my_df_year = epex[(epex.date > y) & (epex.date < str((int(y) + 1)))]
+    monthAnalysis = pd.DataFrame()
+    month_range = range(1, 13)
+    for month in month_range:
+        monthAnalysis = pd.concat([my_df_year[['price']][my_df_year.month_number == month].describe().iloc[1:,:], monthAnalysis], axis = 1)
+        monthAnalysis = monthAnalysis.rename(columns = {'price': int(str(month))})
+    monthAnalysis = monthAnalysis.iloc[:,::-1].T.reset_index().rename(columns = {'index': 'month_of_year'})
+    monthAnalysis['Year'] = y
+    monthsAnalysisDfs.append(monthAnalysis)
+
+merged_monthsAnalysisDfs = pd.concat(monthsAnalysisDfs).reset_index().drop(columns = ['index'])
+print(merged_monthsAnalysisDfs.columns)
+for col in merged_monthsAnalysisDfs.columns.tolist():
+    if col != 'month_of_year' and col != 'Year':
+        if counter == 1:
+            break
+        else:
+            print('hier')
+            figure(num=None, figsize=(10, 4), dpi=90, facecolor='w', edgecolor='k')
+            ax = sns.lineplot('month_of_year', col, hue = 'Year', data = merged_monthsAnalysisDfs)
+            labels=Myyears
+            legend(labels,title="Years", loc="upper right") 
+            ax.axes.set_title("Average Monthly EPEX Spot Prices From 2016-2020",fontsize=10)
+            ax.set_xlabel("Month of the year",fontsize=10)
+            ax.set_ylabel("Avg. Epex Spot Price",fontsize=10)
+            ax.tick_params(labelsize=10)
+            ax.set_xticks(range(1,13))
+            plt.show()
+            fig = ax.get_figure()
+            fig.savefig(r'Vincent_Uhlke\master\AVG_Monthly_Epex_Spot_2016_2020.png') 
+            counter += 1
+            
+            
+# Correll price and load
+
+cleaned_dframe_solar_wind_profile = _dframe[~_dframe[['price', 'DE_wind_profile', 'DE_solar_profile']].isin([np.nan, np.inf, -np.inf]).any(1)]
+cleaned_dframe_solar_wind_profile
+figure(num=None, figsize=(10, 4), dpi=80, facecolor='w', edgecolor='k')
+
+# print(_dframe.DE_load_forecast_entsoe_transparency.describe())
+# # linear or non linear relationship
+print('Solar')
+spearman, p = spearmanr(cleaned_dframe_solar_wind_profile.DE_solar_profile.tolist(), cleaned_dframe_solar_wind_profile.price.tolist())
+print('spearman solar correlation is: ',spearman)
+pearson, _ = pearsonr(cleaned_dframe_solar_wind_profile.DE_solar_profile.tolist(), cleaned_dframe_solar_wind_profile.price.tolist())
+print('pearson solar correlation is:', pearson)
+sns.scatterplot(data=cleaned_dframe_solar_wind_profile, x="DE_solar_profile", y="price")
+plt.show()
+print('******')
+print('Wind')
+figure(num=None, figsize=(10, 4), dpi=80, facecolor='w', edgecolor='k')
+pearson, _ = pearsonr(cleaned_dframe_solar_wind_profile.DE_wind_profile.tolist(), cleaned_dframe_solar_wind_profile.price.tolist())
+print('pearson wind correlation is:', pearson)
+spearman, p = spearmanr(cleaned_dframe_solar_wind_profile.DE_wind_profile.tolist(), cleaned_dframe_solar_wind_profile.price.tolist())
+print('spearman wind correlation is: ',spearman)
+sns.scatterplot(data=cleaned_dframe_solar_wind_profile, x="DE_wind_profile", y="price")
+plt.show()
+
+
+# wind generation pattern
+
+import matplotlib.pyplot as plt
+sns.set_palette("Pastel2")
+figure(num=None, figsize=(10, 4), dpi=80, facecolor='w', edgecolor='k')
+
+#cleaned_dframe_solar_wind_profile.DE_solar_profile.describe()[6]
+sns.lineplot(data=cleaned_dframe_solar_wind_profile[cleaned_dframe_solar_wind_profile.DE_solar_profile >= 0.6].price, color ='b')
+labels=['price']
+legend(labels,title="epex", loc="upper right")
+ax2 = plt.twinx()
+sns.scatterplot(data=cleaned_dframe_solar_wind_profile[cleaned_dframe_solar_wind_profile.DE_solar_profile >  0.6].DE_solar_profile, color = 'black', ax=ax2, alpha=0.2)
+labels=['profile'] 
+legend(labels,title="data points/line", loc="upper left")
+plt.show()
+figure(num=None, figsize=(10, 4), dpi=80, facecolor='w', edgecolor='k')
+
+sns.set_palette("Pastel2")
+sns.lineplot(data=cleaned_dframe_solar_wind_profile[cleaned_dframe_solar_wind_profile.DE_wind_profile >=  0.7].price, color = 'b')
+ax2 = plt.twinx()
+sns.scatterplot(data=cleaned_dframe_solar_wind_profile[cleaned_dframe_solar_wind_profile.DE_wind_profile >=  0.7].DE_wind_profile, color = 'black',ax=ax2,alpha=0.2)
+plt.show()
