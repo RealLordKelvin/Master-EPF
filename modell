@@ -1,0 +1,329 @@
+import numpy as np
+import pandas as pd
+from scipy import stats
+from sklearn.metrics import mean_squared_error
+import matplotlib.pyplot as plt
+import seaborn as sns
+from typing import List
+from datetime import datetime
+from sklearn.metrics import mean_absolute_error as mae
+import statsmodels.api as sm
+from statsmodels.tsa.seasonal import STL
+
+df = pd.read_excel(r'Vincent_Uhlke/master/ready_epex_and_load_clean_data.xlsx')
+df
+random.seed(83746)
+res_stl = STL(df.price,seasonal=25,period=24,robust=True).fit()
+print('sucess')
+df['resid'] = res_stl.resid
+df['season'] = res_stl.seasonal
+df['trend'] = res_stl.trend
+
+
+
+#####
+
+
+from statsmodels.tsa.api import ExponentialSmoothing, SimpleExpSmoothing, Holt
+import random
+print('here')
+random.seed(83746)
+def hourly_decomposition(df): 
+    hourly_decomposition = [df[df.timeshiftHours == hourNumeric].set_index('date') for hourNumeric in range(0,24)]
+    return hourly_decomposition
+
+def _ols(X, y, include_intercept = True):
+    '''
+    Ordinary Least Squares Estimator
+    '''
+    # add constant for intercept
+    if include_intercept:
+        X = sm.add_constant(X)
+    # betas (X^T*X)^-1*X^T*Y
+    betas = np.dot(np.linalg.inv(np.dot(X.T, X)), np.dot(X.T,y))
+    return betas
+
+# https://stackoverflow.com/questions/434287/what-is-the-most-pythonic-way-to-iterate-over-a-list-in-chunks
+def _chunker(seq:List[int], size:int):
+    return (seq[pos:pos + size] for pos in range(0, len(seq), size))
+
+def _area_hyperbolic_sine(x, inverting = False):
+    if not inverting:
+        vst = np.log(x + np.sqrt(np.square(x) + 1))
+    else:
+        vst = np.sinh(x)
+        
+    return np.array(vst)
+
+def _normalizer(x, method:str, rawdata = None, inverting = False):
+    '''
+    normalization of array and invert normalization of array x
+    '''
+    def _median_MAD_norm(x, rawdata = None, inverting = False):
+        
+        if not inverting:
+            MAD = stats.median_absolute_deviation(x)
+            median = np.median(x)
+            med_mad_norm = [(1 / MAD * (xt - median)) for xt in x]
+        else:
+            MAD = stats.median_absolute_deviation(rawdata)
+            median = np.median(rawdata)
+            try:
+                med_mad_norm = [(MAD * xt + median) for xt in x]
+            except:
+                 med_mad_norm = (MAD * x + median)
+                
+        return med_mad_norm
+
+    def _mean_std_norm(x, rawdata = None, inverting = False):
+        
+        if not inverting:
+            Mean = np.mean(x)
+            std = np.std(x)
+            mean_std_norm = [(1/std * (xt - Mean)) for xt in x]
+        else:
+            Mean = np.mean(rawdata)
+            std = np.std(rawdata)
+            try:
+                mean_std_norm = [(std * xt + Mean) for xt in x]
+            except:
+                mean_std_norm = (std * x + Mean)
+        return mean_std_norm
+    
+    if method == 'mad':
+        norm_x = _median_MAD_norm(x, rawdata = rawdata, inverting = inverting)
+    elif method == 'mean':
+        norm_x = _mean_std_norm(x, rawdata = rawdata, inverting = inverting)
+    
+    return np.array(norm_x)
+
+def RMSE(y_real, y_predict):
+    rmse = np.sqrt(mean_squared_error(y_real, y_predict))
+    return rmse
+
+
+def result_visualizer(y_ist, y_hat):
+    figure(num=None, figsize=(10, 4), dpi=80, facecolor='w', edgecolor='k')
+    fig = sns.lineplot(data = y_ist, color = 'purple', label = 'real')
+    fig = sns.lineplot(data = y_hat, color = 'midnightblue', label = 'predict') 
+    return plt.show()
+
+def checker(X):
+    print('#############')
+    for x in X:
+        print(x.shape)
+    print('#############')
+    
+def show_results(yhat, ytest, method:str):
+    predictions = []
+    if method == 'mean':
+        for i in yhat:
+            predictions.append(np.mean(i))
+        # print(predictions)
+        real = []
+        for i in ytest:
+            real.append(i)
+    elif method == 'median':
+        for i in yhat:
+            predictions.append(np.median(i))
+        # print(predictions)
+        real = []
+        for i in ytest:
+            real.append(i)
+    elif method == 'min':
+        for i in yhat:
+            predictions.append(np.min(i))
+        # print(predictions)
+        real = []
+        for i in ytest:
+            real.append(i)
+        
+    print('RMSE:',RMSE(real, predictions))
+    print('MAE:', mae(real, predictions))
+    result_visualizer(np.array(real), np.array(predictions))
+    rediduals = [real[i]-predictions[i] for i in range(len(predictions))]
+#     return rediduals
+    return 
+
+
+class ARX:
+    
+    def __init__(self,raw_df, hour_from_raw_df:int, norm_method = 'mad', ts_exog = True, vst_transfo = True):
+        
+        self.raw_df = raw_df
+        self.df_price = hourly_decomposition(raw_df)[hour_from_raw_df]#self.raw_df[self.raw_df.hourNumeric == hour_from_raw_df].set_index('date')
+        self.ts_exog = ts_exog
+        self.e = numpy.random.normal(0, 1, size=len(self.df_price.price.tolist())) # gaussian white noise as error term
+        self.norm_method = norm_method
+        self.vst_transfo = vst_transfo
+    
+    def vst(self, key = None, ts = None, ts_raw = None, inverting = False):
+        
+        if not inverting:
+            if key == 'resid':
+                vst_ts = _area_hyperbolic_sine(_normalizer(self.df_price.resid.tolist(), self.norm_method))
+#                 vst_ts = _area_hyperbolic_sine(_normalizer(np.add(self.df_price.resid.tolist(),self.df_price.trend.tolist()), self.norm_method))
+            elif key == 'load':
+                vst_ts = _area_hyperbolic_sine(_normalizer(ts, self.norm_method))
+            elif key == 'raw':
+                vst_ts = _area_hyperbolic_sine(_normalizer(self.raw_df.price.tolist(), self.norm_method))
+            else:
+                raise ValueError('Need Key!')
+        else:
+#             vst_ts = _normalizer(_area_hyperbolic_sine(ts, inverting), self.norm_method, self.df_price.price.tolist(), inverting = inverting)
+            vst_ts = _normalizer(_area_hyperbolic_sine(ts, inverting), self.norm_method, ts_raw, inverting = inverting)
+                
+        return vst_ts
+        
+    def AR_Bench(self):
+        random.seed(83746)
+#         if self.vst_transfo:
+#             ts_price = self.vst()
+#         else:
+#             ts_price = self.ts_price   
+        ts_price = self.df_price.price.tolist()
+        x_train, y_train = ts_price[:-2], ts_price[1:-1]
+        x_test, y_test = ts_price[len(ts_price)-2:], ts_price[len(ts_price)-1:]
+        coefficients = _ols(x_train, y_train)
+        yhat = np.array(coefficients[0] + np.dot(x_test[0] ,coefficients[1])  + random.sample(self.e, 1))
+#         if self.vst_transfo:
+#             yhat, y_test = self.vst(yhat, inverting = True), self.vst(y_test, inverting = True)
+        
+        return yhat, y_test
+    
+    def AR_WERON(self, smooth_level = 0.5):
+        random.seed(83746)
+                        
+        if self.vst_transfo:
+            ts_price = self.vst(key = 'resid')
+            raw_data_vst = self.vst(key = 'raw')
+        else:
+            ts_price = self.df_price.resid.tolist() #.price.tolist()
+            raw_data_vst = self.raw_df.price.tolist()
+        if self.ts_exog:
+            exog = self.df_price['load'].values
+            ts_exog_input = self.vst(key = 'load', ts = exog)
+        else:
+            ts_exog_input = []
+        
+        TRAIN_tMinus1, y_train = np.array(ts_price[6:-2]), np.array(ts_price[7:-1])
+        TRAIN_tMinus7,TRAIN_tMinus2 = np.array([ts_price[n] for n in range(len(TRAIN_tMinus1))]), np.array([ts_price[n+5] for n in range(len(TRAIN_tMinus1))])
+        TRAIN_tMinus1Prices = [dayPrices for dayPrices in _chunker(raw_data_vst[24*6:-24*2], 24)]
+        TRAIN_tMinus1MinPrice, TRAIN_tMinus1MaxPrice = np.array([np.min(day) for day in (TRAIN_tMinus1Prices)]), np.array([np.max(day) for day in (TRAIN_tMinus1Prices)])
+        TRAIN_tMinus1Dummy = np.array(self.df_price.weekdayDummies.tolist()[6:-2])
+
+        if self.ts_exog:
+            TRAIN_ForecastLoad = np.array(ts_exog_input[7:-1])
+            X = np.array([TRAIN_tMinus1, TRAIN_tMinus2, TRAIN_tMinus7, TRAIN_tMinus1MinPrice, TRAIN_tMinus1MaxPrice, TRAIN_tMinus1Dummy, TRAIN_ForecastLoad])
+        else:
+            X = np.array([TRAIN_tMinus1, TRAIN_tMinus2, TRAIN_tMinus7, TRAIN_tMinus1MinPrice, TRAIN_tMinus1MaxPrice, TRAIN_tMinus1Dummy])
+                
+        coefficients = _ols(X.T, y_train, True)
+        
+        ses = SimpleExpSmoothing(self.df_price.trend.tolist()[:-2]).fit(smoothing_level=smooth_level,optimized=False)
+        fcast1 = ses.forecast(1)
+        
+        TEST_tMinus1, y_test = ts_price[len(ts_price)-2:len(ts_price)-1], ts_price[len(ts_price)-1:]
+        TEST_tMinus2,TEST_tMinus7 = ts_price[len(ts_price)-3:len(ts_price)-2],ts_price[len(ts_price)-8:len(ts_price)-7]
+        TEST_tMinus1Prices = list(raw_data_vst[len(raw_data_vst)-24*1:])
+        TEST_tMinus1MinPrice, TEST_tMinus1MaxPrice = [np.min(TEST_tMinus1Prices)], [np.max(TEST_tMinus1Prices)]
+        TEST_tMinus1Dummy = self.df_price.weekdayDummies.tolist()[len(self.df_price.weekdayDummies.tolist())-2:len(self.df_price.weekdayDummies.tolist())-1]
+        
+        if self.ts_exog:
+            TEST_ForecastLoad = np.array(ts_exog_input[len(ts_exog_input)-1:])
+            yhat = np.array(coefficients[0] + 
+                             (np.dot(TEST_tMinus1[0] ,coefficients[1])) + 
+                              (np.dot(TEST_tMinus2[0] ,coefficients[2])) +
+                              (np.dot(TEST_tMinus7[0] ,coefficients[3])) +
+                              (np.dot(TEST_tMinus1MinPrice[0] ,coefficients[4])) +
+                              (np.dot(TEST_tMinus1MaxPrice[0] ,coefficients[5])) +
+                              (np.dot(TEST_tMinus1Dummy[0] ,coefficients[6])) +
+                              (np.dot(TEST_ForecastLoad[0] ,coefficients[7])) +
+                                random.sample(list(self.e), 1))
+        else:
+            yhat = np.array(coefficients[0] + 
+                             (np.dot(TEST_tMinus1[0] ,coefficients[1])) + 
+                              (np.dot(TEST_tMinus2[0] ,coefficients[2])) +
+                              (np.dot(TEST_tMinus7[0] ,coefficients[3])) +
+                              (np.dot(TEST_tMinus1MinPrice[0] ,coefficients[4])) +
+                              (np.dot(TEST_tMinus1MaxPrice[0] ,coefficients[5])) +
+                              (np.dot(TEST_tMinus1Dummy[0] ,coefficients[6])) +
+                                random.sample(list(self.e), 1))
+    
+            
+        if self.vst_transfo:
+            yhat, y_test = self.vst(ts = yhat, ts_raw = self.df_price.resid.tolist() , inverting = True), self.vst(ts = y_test, ts_raw = self.df_price.resid.tolist(), inverting = True)
+        
+        yhat = np.add(yhat, self.df_price.season[len(ts_price)-2:len(ts_price)-1])[0]
+        yhat = np.add(yhat, fcast1)
+        # list of list y_test
+        try:
+            y_test = np.add(y_test[0], self.df_price.season[len(ts_price)-1:])[0][0]
+        except:
+            y_test = np.add(y_test[0], self.df_price.season[len(ts_price)-1:])
+            
+        y_test = np.add(y_test, self.df_price.trend[len(ts_price)-1:])
+        
+        return yhat, y_test
+
+
+def simulator_w_calibration(d,stack = None, period = 7, ts_exog = True,  vst_transfo = True, norm_method = 'mad'):
+    '''
+    Simulates our model of choice. It will model 24 models, one for each hour
+    '''
+    random.seed(84645)
+    rmse_results = dict()
+    stack_yhat_collector = []
+    stack_test_collector = []    
+    
+    #startingpoint = 728*24+1
+    for day in range(35040,d.shape[0]):#728*24+1+24*period):
+        yhats = []
+        ytests = []
+        i = d.iloc[day-1:]['timeshiftHours'].values[0]
+        d_stack = d.iloc[day-stack:day]
+        AR_1 = ARX(d_stack, i, norm_method = norm_method, vst_transfo = vst_transfo, ts_exog = ts_exog)
+        yhat, y_test = AR_1.AR_WERON(smooth_level = 0.5)
+#         yhat, y_test = AR_1.AR_Bench()
+        yhats.append(yhat)
+        ytests.append(y_test)
+        
+#         for stack in range(56*24, 112*24+1, 28*24):
+
+#         for stack2 in range(714*24, 728*24+1, 7*24):
+
+        stack_yhat_collector.append(yhats)
+        stack_test_collector.append(y_test)
+
+    return stack_yhat_collector,stack_test_collector
+
+
+######### NAIVE
+
+
+def contreras(df):
+    naive = []
+    for p in range(35040, df.shape[0]):
+#         print(p)
+        if df.weekdayDummies.tolist()[p] == 1:
+#             print('hier')
+            naive.append(df.price.tolist()[(p-24*7)])
+        else:
+            naive.append(df.price.tolist()[p-24])
+    return naive
+    
+    
+resultsTable['NAIVE'] = contreras(df)
+resultsTable['NAIVE']
+resultsTable.to_excel('Vincent_Uhlke/master/Results_MASTER_END.xlsx')
+
+
+
+#########
+
+
+resultsTable = pd.DataFrame()
+
+resultsTable['date'] = df.iloc[35040:].date.tolist()
+resultsTable['hour'] = df.iloc[35040:].timeshiftHours.tolist()
+resultsTable['ytest'] = [item[0] for item in stack_test_collector]
